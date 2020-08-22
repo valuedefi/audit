@@ -594,7 +594,7 @@ contract LPTokenWrapper {
     using SafeERC20 for IERC20;
     using Address for address;
 
-    IERC20 public yfv = IERC20(0x45f24BaEef268BB6d63AEe5129015d69702BCDfa);
+    IERC20 public y = IERC20(0x4B0b0bF60aBbF79a2Fd028e4d52ac393982488Ce);
 
     uint256 private _totalSupply;
     mapping(address => uint256) private _balances;
@@ -610,19 +610,13 @@ contract LPTokenWrapper {
     function tokenStake(uint256 amount) internal {
         _totalSupply = _totalSupply.add(amount);
         _balances[msg.sender] = _balances[msg.sender].add(amount);
-        yfv.safeTransferFrom(msg.sender, address(this), amount);
-    }
-
-    function tokenStakeOnBehalf(address stakeFor, uint256 amount) internal {
-        _totalSupply = _totalSupply.add(amount);
-        _balances[stakeFor] = _balances[stakeFor].add(amount);
-        yfv.safeTransferFrom(msg.sender, address(this), amount);
+        y.safeTransferFrom(msg.sender, address(this), amount);
     }
 
     function tokenWithdraw(uint256 amount) internal {
         _totalSupply = _totalSupply.sub(amount);
         _balances[msg.sender] = _balances[msg.sender].sub(amount);
-        yfv.safeTransfer(msg.sender, amount);
+        y.safeTransfer(msg.sender, amount);
     }
 }
 
@@ -635,7 +629,12 @@ interface IYFVVote {
     function averageVotingValue(address poolAddress, uint256 votingItem) external view returns (uint16);
 }
 
-contract YFVStake is LPTokenWrapper, IRewardDistributionRecipient {
+interface IYFVStake {
+    function stakeOnBehalf(address stakeFor, uint256 amount) external;
+}
+
+contract YFVRewardsLINKPool is LPTokenWrapper, IRewardDistributionRecipient {
+    IERC20 public yfv = IERC20(0x45f24BaEef268BB6d63AEe5129015d69702BCDfa);
     IERC20 public vUSD = IERC20(0x1B8E12F839BD4e73A47adDF76cF7F0097d74c14C);
     IERC20 public vETH = IERC20(0x76A034e76Aa835363056dd418611E4f81870f16e);
 
@@ -643,28 +642,28 @@ contract YFVStake is LPTokenWrapper, IRewardDistributionRecipient {
     uint256 public vETH_REWARD_FRACTION_RATE = 21000000000000; // 21000 * 1e9 (vETH decimals = 9)
 
     uint256 public constant DURATION = 7 days;
-    uint8 public constant NUMBER_EPOCHS = 50;
+    uint8 public constant NUMBER_EPOCHS = 10;
 
-    uint256 public constant FROZEN_STAKING_TIME = 72 hours;
     uint256 public constant REFERRAL_COMMISSION_PERCENT = 1;
 
-    uint256 public constant EPOCH_REWARD = 63000 ether;
+    uint256 public constant EPOCH_REWARD = 210000 ether;
     uint256 public constant TOTAL_REWARD = EPOCH_REWARD * NUMBER_EPOCHS;
 
     uint256 public currentEpochReward = EPOCH_REWARD;
     uint256 public totalAccumulatedReward = 0;
     uint8 public currentEpoch = 0;
-    uint256 public starttime = 1598018400; // Friday, August 21, 2020 2:00:00 PM (GMT+0)
+    uint256 public starttime = 1598025600; // Friday, August 21, 2020 4:00:00 PM (GMT+0)
     uint256 public periodFinish = 0;
     uint256 public rewardRate = 0;
     uint256 public lastUpdateTime;
     uint256 public rewardPerTokenStored;
     mapping(address => uint256) public userRewardPerTokenPaid;
     mapping(address => uint256) public rewards;
-    mapping(address => uint256) public lastStakeTimes;
     mapping(address => bool) public claimedVETHRewards; // account -> has claimed vETH?
 
     mapping(address => uint256) public accumulatedStakingPower; // will accumulate every time staker does getReward()
+
+    address public rewardStake;
 
     event RewardAdded(uint256 reward);
     event Burned(uint256 reward);
@@ -703,13 +702,12 @@ contract YFVStake is LPTokenWrapper, IRewardDistributionRecipient {
 
     function earned(address account) public view returns (uint256) {
         uint256 calculatedEarned = balanceOf(account)
-        .mul(rewardPerToken().sub(userRewardPerTokenPaid[account]))
-        .div(1e18)
-        .add(rewards[account]);
+            .mul(rewardPerToken().sub(userRewardPerTokenPaid[account]))
+            .div(1e18)
+            .add(rewards[account]);
         uint256 poolBalance = yfv.balanceOf(address(this));
-        if (poolBalance < totalSupply()) return 0; // double-check for sure. It should never happen
         // some rare case the reward can be slightly bigger than real number, we need to check against how much we have left in pool
-        if (calculatedEarned.add(totalSupply()) > poolBalance) return poolBalance.sub(totalSupply());
+        if (calculatedEarned > poolBalance) return poolBalance;
         return calculatedEarned;
     }
 
@@ -734,39 +732,31 @@ contract YFVStake is LPTokenWrapper, IRewardDistributionRecipient {
         vETH.safeTransfer(msg.sender, claimAmount);
     }
 
-    function stake(uint256 amount, address referrer) public updateReward(msg.sender) checkNextEpoch {
+    function setRewardStake(address _rewardStake) external onlyOwner {
+        rewardStake = _rewardStake;
+        yfv.approve(rewardStake, 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff);
+    }
+
+    function stake(uint256 amount, address referrer) public updateReward(msg.sender) checkNextEpoch checkStart {
         require(amount > 0, "Cannot stake 0");
         require(referrer != msg.sender, "You cannot refer yourself.");
         super.tokenStake(amount);
-        lastStakeTimes[msg.sender] = block.timestamp;
         emit Staked(msg.sender, amount);
         if (rewardReferral != address(0) && referrer != address(0)) {
             IYFVReferral(rewardReferral).setReferrer(msg.sender, referrer);
         }
     }
 
-    function stakeOnBehalf(address stakeFor, uint256 amount) public updateReward(stakeFor) checkNextEpoch {
-        require(amount > 0, "Cannot stake 0");
-        super.tokenStakeOnBehalf(stakeFor, amount);
-        lastStakeTimes[stakeFor] = block.timestamp;
-        emit Staked(stakeFor, amount);
-    }
-
-    function stakeReward() public updateReward(msg.sender) checkNextEpoch {
+    function stakeReward() public updateReward(msg.sender) checkNextEpoch checkStart {
+        require(rewardStake != address(0), "Dont know the staking pool");
         uint256 reward = getReward();
-        require(reward > 0, "Earned too little");
-        super.tokenStake(reward);
-        lastStakeTimes[msg.sender] = block.timestamp;
-        emit Staked(msg.sender, reward);
+        yfv.safeTransferFrom(msg.sender, address(this), reward);
+        require(reward > 1, "Earned too little");
+        IYFVStake(rewardStake).stakeOnBehalf(msg.sender, reward);
     }
 
-    function unfrozenStakeTime(address account) public view returns (uint256) {
-        return lastStakeTimes[account] + FROZEN_STAKING_TIME;
-    }
-
-    function withdraw(uint256 amount) public updateReward(msg.sender) checkNextEpoch {
+    function withdraw(uint256 amount) public updateReward(msg.sender) checkNextEpoch checkStart {
         require(amount > 0, "Cannot withdraw 0");
-        require(block.timestamp >= unfrozenStakeTime(msg.sender), "Coin is still frozen");
         super.tokenWithdraw(amount);
         emit Withdrawn(msg.sender, amount);
     }
@@ -776,7 +766,7 @@ contract YFVStake is LPTokenWrapper, IRewardDistributionRecipient {
         getReward();
     }
 
-    function getReward() public updateReward(msg.sender) checkNextEpoch returns (uint256) {
+    function getReward() public updateReward(msg.sender) checkNextEpoch checkStart returns (uint256) {
         uint256 reward = earned(msg.sender);
         if (reward > 1) {
             accumulatedStakingPower[msg.sender] = accumulatedStakingPower[msg.sender].add(rewards[msg.sender]);
@@ -806,10 +796,18 @@ contract YFVStake is LPTokenWrapper, IRewardDistributionRecipient {
         return 0;
     }
 
+    function nextRewardMultiplier() public view returns (uint16) {
+        if (rewardVote != address(0)) {
+            uint16 votingValue = IYFVVote(rewardVote).averageVotingValue(address(this), periodFinish);
+            if (votingValue > 0) return votingValue;
+        }
+        return 100;
+    }
+
     modifier checkNextEpoch() {
-        require(periodFinish > 0, "Pool has not started");
         if (block.timestamp >= periodFinish) {
-            currentEpochReward = EPOCH_REWARD;
+            uint16 rewardMultiplier = nextRewardMultiplier(); // 50% -> 200% (by vote)
+            currentEpochReward = EPOCH_REWARD.mul(rewardMultiplier).div(100); // x0.50 -> x2.00 (by vote)
 
             if (totalAccumulatedReward.add(currentEpochReward) > TOTAL_REWARD) {
                 currentEpochReward = TOTAL_REWARD.sub(totalAccumulatedReward); // limit total reward
@@ -831,25 +829,27 @@ contract YFVStake is LPTokenWrapper, IRewardDistributionRecipient {
         _;
     }
 
+    modifier checkStart() {
+        require(block.timestamp > starttime, "not start");
+        _;
+    }
+
     function notifyRewardAmount(uint256 reward) external onlyOwner updateReward(address(0)) {
         require(periodFinish == 0, "Only can call once to start staking");
         currentEpochReward = reward;
+
         if (totalAccumulatedReward.add(currentEpochReward) > TOTAL_REWARD) {
             currentEpochReward = TOTAL_REWARD.sub(totalAccumulatedReward); // limit total reward
         }
+
+        rewardRate = currentEpochReward.div(DURATION);
+        yfv.mint(address(this), currentEpochReward);
+        vUSD.mint(address(this), currentEpochReward.div(vUSD_REWARD_FRACTION_RATE));
+        vETH.mint(address(this), currentEpochReward.div(vETH_REWARD_FRACTION_RATE));
+        totalAccumulatedReward = totalAccumulatedReward.add(currentEpochReward);
+        currentEpoch++;
         lastUpdateTime = block.timestamp;
-        if (block.timestamp < starttime) {// epoch zero
-            periodFinish = starttime;
-            rewardRate = reward.div(periodFinish.sub(block.timestamp));
-        } else { // 1st epoch
-            periodFinish = lastUpdateTime.add(DURATION);
-            rewardRate = reward.div(DURATION);
-            currentEpoch++;
-        }
-        yfv.mint(address(this), reward);
-        vUSD.mint(address(this), reward.div(vUSD_REWARD_FRACTION_RATE));
-        vETH.mint(address(this), reward.div(vETH_REWARD_FRACTION_RATE));
-        totalAccumulatedReward = totalAccumulatedReward.add(reward);
-        emit RewardAdded(reward);
+        periodFinish = block.timestamp.add(DURATION);
+        emit RewardAdded(currentEpochReward);
     }
 }

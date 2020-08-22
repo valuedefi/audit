@@ -594,7 +594,7 @@ contract LPTokenWrapper {
     using SafeERC20 for IERC20;
     using Address for address;
 
-    IERC20 public yfv = IERC20(0x45f24BaEef268BB6d63AEe5129015d69702BCDfa);
+    IERC20 public yfv = IERC20(0x0312312ad95590b9F971F3C4972AD53F31389973);
 
     uint256 private _totalSupply;
     mapping(address => uint256) private _balances;
@@ -636,16 +636,16 @@ interface IYFVVote {
 }
 
 contract YFVStake is LPTokenWrapper, IRewardDistributionRecipient {
-    IERC20 public vUSD = IERC20(0x1B8E12F839BD4e73A47adDF76cF7F0097d74c14C);
-    IERC20 public vETH = IERC20(0x76A034e76Aa835363056dd418611E4f81870f16e);
+    IERC20 public vUSD = IERC20(0x8E5E172a5eeF097d67981e04C2d6c8810198DEee);
+    IERC20 public vETH = IERC20(0x08e33A1071a6f54419aC2CE2D87abCEddF6cf667);
 
     uint256 public vUSD_REWARD_FRACTION_RATE = 21000000000; // 21 * 1e9 (vUSD decimals = 9)
     uint256 public vETH_REWARD_FRACTION_RATE = 21000000000000; // 21000 * 1e9 (vETH decimals = 9)
 
-    uint256 public constant DURATION = 7 days;
-    uint8 public constant NUMBER_EPOCHS = 50;
+    uint256 public constant DURATION = 1 minutes;
+    uint8 public constant NUMBER_EPOCHS = 10;
 
-    uint256 public constant FROZEN_STAKING_TIME = 72 hours;
+    uint256 public constant FROZEN_STAKING_TIME = 10 seconds;
     uint256 public constant REFERRAL_COMMISSION_PERCENT = 1;
 
     uint256 public constant EPOCH_REWARD = 63000 ether;
@@ -654,7 +654,7 @@ contract YFVStake is LPTokenWrapper, IRewardDistributionRecipient {
     uint256 public currentEpochReward = EPOCH_REWARD;
     uint256 public totalAccumulatedReward = 0;
     uint8 public currentEpoch = 0;
-    uint256 public starttime = 1598018400; // Friday, August 21, 2020 2:00:00 PM (GMT+0)
+    uint256 public starttime = 1597993340 + 60; // Wednesday, August 19, 2020 9:00:00 PM (GMT+0)
     uint256 public periodFinish = 0;
     uint256 public rewardRate = 0;
     uint256 public lastUpdateTime;
@@ -672,6 +672,10 @@ contract YFVStake is LPTokenWrapper, IRewardDistributionRecipient {
     event Withdrawn(address indexed user, uint256 amount);
     event RewardPaid(address indexed user, uint256 reward);
     event CommissionPaid(address indexed user, uint256 reward);
+
+    constructor(uint256 _starttime) public {
+        starttime = _starttime;
+    }
 
     modifier updateReward(address account) {
         rewardPerTokenStored = rewardPerToken();
@@ -703,9 +707,9 @@ contract YFVStake is LPTokenWrapper, IRewardDistributionRecipient {
 
     function earned(address account) public view returns (uint256) {
         uint256 calculatedEarned = balanceOf(account)
-        .mul(rewardPerToken().sub(userRewardPerTokenPaid[account]))
-        .div(1e18)
-        .add(rewards[account]);
+            .mul(rewardPerToken().sub(userRewardPerTokenPaid[account]))
+            .div(1e18)
+            .add(rewards[account]);
         uint256 poolBalance = yfv.balanceOf(address(this));
         if (poolBalance < totalSupply()) return 0; // double-check for sure. It should never happen
         // some rare case the reward can be slightly bigger than real number, we need to check against how much we have left in pool
@@ -835,13 +839,14 @@ contract YFVStake is LPTokenWrapper, IRewardDistributionRecipient {
         require(periodFinish == 0, "Only can call once to start staking");
         currentEpochReward = reward;
         if (totalAccumulatedReward.add(currentEpochReward) > TOTAL_REWARD) {
-            currentEpochReward = TOTAL_REWARD.sub(totalAccumulatedReward); // limit total reward
+            currentEpochReward = TOTAL_REWARD.sub(totalAccumulatedReward);
+            // limit total reward
         }
         lastUpdateTime = block.timestamp;
         if (block.timestamp < starttime) {// epoch zero
             periodFinish = starttime;
             rewardRate = reward.div(periodFinish.sub(block.timestamp));
-        } else { // 1st epoch
+        } else {// 1st epoch
             periodFinish = lastUpdateTime.add(DURATION);
             rewardRate = reward.div(DURATION);
             currentEpoch++;

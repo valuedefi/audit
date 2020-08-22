@@ -14,4 +14,9 @@ YFV is the governance token of YFValue protocol. The project aims to bring the t
 
 [Diff checker: YFI and YFV](https://www.diffchecker.com/xmmWFRAg)
 
-[Diff checker: YFIRewards and YFVRewards](https://www.diffchecker.com/PT4d1PSC)
+[Diff checker: YFIRewards and YFVRewards (Seed Pool)](https://www.diffchecker.com/PT4d1PSC)
+ - Seed Pool supports 4 stables coin instead of a single y coin from the original code
+
+[Diff checker: YFIRewards and YFV_Rewards_PoolXXX (Balancer/Uni Pool)](https://www.diffchecker.com/PWyndemv)
+ - Removed rewardDistribution
+ - notifyRewardAmount() can only call once by owner and reward amount cant be over TOTAL_REWARD

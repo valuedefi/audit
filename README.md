@@ -22,7 +22,7 @@ YFV is the governance token of YFValue protocol. The project aims to bring the t
  - notifyRewardAmount() can only call once by owner and reward amount cant be over TOTAL_REWARD
 
 [Diff checker: YFV_Stake and YFV_Stake_v2](https://www.diffchecker.com/ILtq1RZG)
- - Added whitelistedPools (so hackers cant attack via stakeOnBelf by anymore)
+ - Added whitelistedPools (so hackers cant attack via stakeOnBelf by penny amount anymore)
  - Added lowStakeDepositFee, highStakeDepositFee, unlockWithdrawFee (and disable all at the begining. Will set by governance after VIP-1.1)
  - Set yfvInsuranceFund to Governance Multisig Wallet (and move to deployed Insurance Fund contract later)
  - Owner (governance) can set epochReward to 0 to disable the pool with no harm

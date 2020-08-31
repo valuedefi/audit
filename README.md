@@ -22,8 +22,14 @@ YFV is the governance token of YFValue protocol. The project aims to bring the t
  - notifyRewardAmount() can only call once by owner and reward amount cant be over TOTAL_REWARD
 
 [Diff checker: YFV_Stake and YFV_Stake_v2](https://www.diffchecker.com/ILtq1RZG)
- - Added whitelistedPools (so hackers cant attack via stakeOnBelf by penny amount anymore)
- - Added lowStakeDepositFee, highStakeDepositFee, unlockWithdrawFee (and disable all at the begining. Will set by governance after VIP-1.1)
+ - Added whitelistedPools (so hackers can't attack via stakeOnBelf by penny amount anymore)
+ - Added lowStakeDepositFee, highStakeDepositFee, unlockWithdrawFee (and disable all at the beginning. Will set by governance after VIP-1.1)
  - Set yfvInsuranceFund to Governance Multisig Wallet (and move to deployed Insurance Fund contract later)
  - Owner (governance) can set epochReward to 0 to disable the pool with no harm
- - Check if the minter rights (vETH and vUSD) are revoked, and set epochReward to zero with no harm (in checkNextEpoch() modifier). 
+ - Check if the minter rights (vETH and vUSD) are revoked, and set epochReward to zero with no harm (in checkNextEpoch() modifier).
+ 
+**_Staking Deposit/Withdraw Fee system:_**
+ - unlockWithdrawFee = 0.1%: stakers will need to pay 0.1% (sent to insurance fund)of amount they want to withdraw if the coin still frozen
+ - lowStakeDepositFee = 0.1%: stakers still can stake with low amount but need to pay 0.1% (sent to insurance fund)
+ - specially, if lowStakeDepositFee = 10000 -> low amount stakers will not pay anything (rich-men pay tax, not poor-men)
+ - highStakeDepositFee = 0.1%: stakers need to pay 0.1% of extra amount more than 90 YFV (sent to insurance fund)

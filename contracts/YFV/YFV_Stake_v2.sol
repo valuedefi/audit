@@ -656,6 +656,10 @@ contract YFVStakeV2 is LPTokenWrapper, IRewardDistributionRecipient {
     uint256 public constant TOTAL_REWARD = 8740000 * (10 ** 9); // 8,740,000 vUSD (and 8,740 vETH)
 
     // ** DISABLED AT BEGINNING - WILL SET IT BY GOVERNANCE AFTER VIP-1.1
+    // ** unlockWithdrawFee = 0.1%: stakers will need to pay 0.1% (sent to insurance fund)of amount they want to withdraw if the coin still frozen
+    // ** lowStakeDepositFee = 0.1%: stakers still can stake with low amount but need to pay 0.1% (sent to insurance fund)
+    //    specially, if lowStakeDepositFee = 10000 -> low amount stakers will not pay anything (richmen pay tax, not poormen)
+    // ** highStakeDepositFee = 0.1%: stakers need to pay 0.1% of extra amount more than 90 YFV (sent to insurance fund)
     uint256 public lowStakeDepositFee = 0; // per ten thousand (eg. 15 -> 0.15%)
     uint256 public highStakeDepositFee = 0; // per ten thousand (eg. 15 -> 0.15%)
     uint256 public unlockWithdrawFee = 0; // per ten thousand (eg. 15 -> 0.15%)
@@ -757,9 +761,9 @@ contract YFVStakeV2 is LPTokenWrapper, IRewardDistributionRecipient {
     // vUSD balance
     function earned(address account) public view returns (uint256) {
         uint256 calculatedEarned = balanceOf(account)
-            .mul(rewardPerToken().sub(userRewardPerTokenPaid[account]))
-            .div(1e18)
-            .add(rewards[account]);
+        .mul(rewardPerToken().sub(userRewardPerTokenPaid[account]))
+        .div(1e18)
+        .add(rewards[account]);
         uint256 poolBalance = vUSD.balanceOf(address(this));
         // some rare case the reward can be slightly bigger than real number, we need to check against how much we have left in pool
         if (calculatedEarned > poolBalance) return poolBalance;
@@ -781,9 +785,14 @@ contract YFVStakeV2 is LPTokenWrapper, IRewardDistributionRecipient {
         uint256 depositFee = 0;
         if (minStakingAmount > 0) {
             if (amount < minStakingAmount && lowStakeDepositFee < 10000) {
+                // if amount is less than minStakingAmount and lowStakeDepositFee is not disabled
+
+                // if governance does not allow low stake
                 if (lowStakeDepositFee == 0) require(amount >= minStakingAmount, "Cannot stake below minStakingAmount");
+                // otherwise depositFee will be calculated based on the rate
                 else depositFee = amount.mul(lowStakeDepositFee).div(10000);
             } else if (amount > minStakingAmount && highStakeDepositFee > 0) {
+                // if amount is greater than minStakingAmount and governance decides richman to pay tax (of the extra amount)
                 depositFee = amount.sub(minStakingAmount).mul(highStakeDepositFee).div(10000);
             }
             if (depositFee > 0) {
@@ -814,9 +823,15 @@ contract YFVStakeV2 is LPTokenWrapper, IRewardDistributionRecipient {
         uint256 depositFee = 0;
         if (minStakingAmount > 0) {
             if (amount < minStakingAmount && lowStakeDepositFee < 10000) {
+                // if amount is less than minStakingAmount and lowStakeDepositFee is not disabled
+
+                // if governance does not allow low stake
                 if (lowStakeDepositFee == 0) require(amount >= minStakingAmount, "Cannot stake below minStakingAmount");
+
+                // otherwise depositFee will be calculated based on the rate
                 else depositFee = amount.mul(lowStakeDepositFee).div(10000);
             } else if (amount > minStakingAmount && highStakeDepositFee > 0) {
+                // if amount is greater than minStakingAmount and governance decides richman to pay tax (of the extra amount)
                 depositFee = amount.sub(minStakingAmount).mul(highStakeDepositFee).div(10000);
             }
             if (depositFee > 0) {
@@ -846,7 +861,10 @@ contract YFVStakeV2 is LPTokenWrapper, IRewardDistributionRecipient {
         require(amount > 0, "Cannot withdraw 0");
         uint256 actualWithdrawAmount = amount;
         if (block.timestamp < unfrozenStakeTime(msg.sender)) {
+            // if coin is still frozen and governance does not allow stakers to unstake before timer ends
             if (unlockWithdrawFee == 0) revert("Coin is still frozen");
+
+            // otherwise withdrawFee will be calculated based on the rate
             uint256 withdrawFee = amount.mul(unlockWithdrawFee).div(10000);
             actualWithdrawAmount = amount.sub(withdrawFee);
             if (yfvInsuranceFund != address(0)) { // send fee to insurance

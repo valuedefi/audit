@@ -401,6 +401,9 @@ interface IERC20 {
      */
     function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
 
+    /** YFV, vUSD, vETH has minters **/
+    function minters(address account) external view returns (bool);
+
     /**
      * @dev Emitted when `value` tokens are moved from one account (`from`) to
      * another (`to`).
@@ -729,6 +732,16 @@ contract YFVStakeV2 is LPTokenWrapper, IRewardDistributionRecipient {
         unlockWithdrawFee = _unlockWithdrawFee;
     }
 
+    // To upgrade vUSD contract (v1 is still experimental, we may need vUSDv2 with rebase() function working soon - then governance will call this upgrade)
+    function upgradeVUSDContract(address _vUSDContract) public onlyOwner {
+        vUSD = IERC20(_vUSDContract);
+    }
+
+    // To upgrade vETH contract (v1 is still experimental, we may need vETHv2 with rebase() function working soon - then governance will call this upgrade)
+    function upgradeVETHContract(address _vETHContract) public onlyOwner {
+        vETH = IERC20(_vETHContract);
+    }
+
     modifier updateReward(address account) {
         rewardPerTokenStored = rewardPerToken();
         lastUpdateTime = lastTimeRewardApplicable();
@@ -906,7 +919,13 @@ contract YFVStakeV2 is LPTokenWrapper, IRewardDistributionRecipient {
             }
 
             if (currentEpochReward > 0) {
-                totalAccumulatedReward = totalAccumulatedReward.add(currentEpochReward);
+                if (!vUSD.minters(address(this)) || !vETH.minters(address(this))) {
+                    currentEpochReward = 0;
+                } else {
+                    vUSD.mint(address(this), currentEpochReward);
+                    vETH.mint(address(this), currentEpochReward.div(vETH_REWARD_FRACTION_RATE));
+                    totalAccumulatedReward = totalAccumulatedReward.add(currentEpochReward);
+                }
                 currentEpoch++;
             }
 
@@ -919,7 +938,6 @@ contract YFVStakeV2 is LPTokenWrapper, IRewardDistributionRecipient {
     }
 
     // Start the pool with reward amount for this epoch
-    // Mint all the total reward for vUSD and vETH (to avoid mint more every new epoch)
     function notifyRewardAmount(uint256 reward) external onlyOwner updateReward(address(0)) {
         require(periodFinish == 0, "Only can call once to start staking");
         currentEpochReward = reward;
@@ -935,8 +953,8 @@ contract YFVStakeV2 is LPTokenWrapper, IRewardDistributionRecipient {
             rewardRate = reward.div(DURATION);
             currentEpoch++;
         }
-        vUSD.mint(address(this), TOTAL_REWARD);
-        vETH.mint(address(this), TOTAL_REWARD.div(vETH_REWARD_FRACTION_RATE));
+        vUSD.mint(address(this), reward);
+        vETH.mint(address(this), reward.div(vETH_REWARD_FRACTION_RATE));
         totalAccumulatedReward = totalAccumulatedReward.add(reward);
         emit RewardAdded(reward);
     }

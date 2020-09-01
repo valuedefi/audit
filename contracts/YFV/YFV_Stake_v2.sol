@@ -35,7 +35,7 @@
 
 // File: @openzeppelin/contracts/math/Math.sol
 
-pragma solidity ^0.5.0;
+pragma solidity 0.5.17;
 
 /**
  * @dev Standard math utilities missing in the Solidity language.
@@ -67,7 +67,7 @@ library Math {
 
 // File: @openzeppelin/contracts/math/SafeMath.sol
 
-pragma solidity ^0.5.0;
+pragma solidity 0.5.17;
 
 /**
  * @dev Wrappers over Solidity's arithmetic operations with added overflow
@@ -226,7 +226,7 @@ library SafeMath {
 
 // File: @openzeppelin/contracts/GSN/Context.sol
 
-pragma solidity ^0.5.0;
+pragma solidity 0.5.17;
 
 /*
  * @dev Provides information about the current execution context, including the
@@ -257,7 +257,7 @@ contract Context {
 
 // File: @openzeppelin/contracts/ownership/Ownable.sol
 
-pragma solidity ^0.5.0;
+pragma solidity 0.5.17;
 
 /**
  * @dev Contract module which provides a basic access control mechanism, where
@@ -335,7 +335,7 @@ contract Ownable is Context {
 
 // File: @openzeppelin/contracts/token/ERC20/IERC20.sol
 
-pragma solidity ^0.5.0;
+pragma solidity 0.5.17;
 
 /**
  * @dev Interface of the ERC20 standard as defined in the EIP. Does not include
@@ -401,9 +401,6 @@ interface IERC20 {
      */
     function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
 
-    /** YFV, vUSD, vETH has minters **/
-    function minters(address account) external view returns (bool);
-
     /**
      * @dev Emitted when `value` tokens are moved from one account (`from`) to
      * another (`to`).
@@ -421,7 +418,7 @@ interface IERC20 {
 
 // File: @openzeppelin/contracts/utils/Address.sol
 
-pragma solidity ^0.5.5;
+pragma solidity 0.5.17;
 
 /**
  * @dev Collection of functions related to the address type
@@ -492,7 +489,7 @@ library Address {
 
 // File: @openzeppelin/contracts/token/ERC20/SafeERC20.sol
 
-pragma solidity ^0.5.0;
+pragma solidity 0.5.17;
 
 
 
@@ -569,7 +566,7 @@ library SafeERC20 {
 
 // File: contracts/IRewardDistributionRecipient.sol
 
-pragma solidity ^0.5.0;
+pragma solidity 0.5.17;
 
 
 contract IRewardDistributionRecipient is Ownable {
@@ -584,7 +581,7 @@ contract IRewardDistributionRecipient is Ownable {
 
 // File: contracts/CurveRewards.sol
 
-pragma solidity ^0.5.0;
+pragma solidity 0.5.17;
 
 
 contract LPTokenWrapper {
@@ -643,17 +640,18 @@ contract YFVStakeV2 is LPTokenWrapper, IRewardDistributionRecipient {
     uint256 public currentEpochReward = 0;
     uint256 public totalAccumulatedReward = 0;
     uint8 public currentEpoch = 0;
-    uint256 public starttime = 1598796000; // Sunday, August 30, 2020 2:00:00 PM (GMT+0)
+    uint256 public starttime = 1598968800; // Tuesday, September 1, 2020 2:00:00 PM (GMT+0)
     uint256 public periodFinish = 0;
     uint256 public rewardRate = 0;
     uint256 public lastUpdateTime;
     uint256 public rewardPerTokenStored;
 
-    uint256 public epochReward = 230000 * (10 ** 9);
+    uint256 public constant DEFAULT_EPOCH_REWARD = 230000 * (10 ** 9); // 230,000 vUSD (and 230 vETH)
+    uint256 public constant TOTAL_REWARD = DEFAULT_EPOCH_REWARD * NUMBER_EPOCHS; // 8,740,000 vUSD (and 8,740 vETH)
+
+    uint256 public epochReward = DEFAULT_EPOCH_REWARD;
     uint256 public minStakingAmount = 90 ether;
     uint256 public unstakingFrozenTime = 40 hours;
-
-    uint256 public constant TOTAL_REWARD = 8740000 * (10 ** 9); // 8,740,000 vUSD (and 8,740 vETH)
 
     // ** DISABLED AT BEGINNING - WILL SET IT BY GOVERNANCE AFTER VIP-1.1
     // ** unlockWithdrawFee = 0.1%: stakers will need to pay 0.1% (sent to insurance fund)of amount they want to withdraw if the coin still frozen
@@ -707,6 +705,7 @@ contract YFVStakeV2 is LPTokenWrapper, IRewardDistributionRecipient {
     }
 
     function setEpochReward(uint256 _epochReward) public onlyOwner {
+        require(_epochReward <= DEFAULT_EPOCH_REWARD * 10, "Insane big _epochReward!"); // At most 10x only
         epochReward = _epochReward;
     }
 
@@ -885,7 +884,7 @@ contract YFVStakeV2 is LPTokenWrapper, IRewardDistributionRecipient {
     }
 
     function getReward() public updateReward(msg.sender) checkNextEpoch {
-        uint256 reward = earned(msg.sender);
+        uint256 reward = rewards[msg.sender];
         if (reward > 0) {
             accumulatedStakingPower[msg.sender] = accumulatedStakingPower[msg.sender].add(rewards[msg.sender]);
             rewards[msg.sender] = 0;
@@ -907,13 +906,7 @@ contract YFVStakeV2 is LPTokenWrapper, IRewardDistributionRecipient {
             }
 
             if (currentEpochReward > 0) {
-                if (!vUSD.minters(address(this)) || !vETH.minters(address(this))) {
-                    currentEpochReward = 0;
-                } else {
-                    vUSD.mint(address(this), currentEpochReward);
-                    vETH.mint(address(this), currentEpochReward.div(vETH_REWARD_FRACTION_RATE));
-                    totalAccumulatedReward = totalAccumulatedReward.add(currentEpochReward);
-                }
+                totalAccumulatedReward = totalAccumulatedReward.add(currentEpochReward);
                 currentEpoch++;
             }
 
@@ -925,6 +918,8 @@ contract YFVStakeV2 is LPTokenWrapper, IRewardDistributionRecipient {
         _;
     }
 
+    // Start the pool with reward amount for this epoch
+    // Mint all the total reward for vUSD and vETH (to avoid mint more every new epoch)
     function notifyRewardAmount(uint256 reward) external onlyOwner updateReward(address(0)) {
         require(periodFinish == 0, "Only can call once to start staking");
         currentEpochReward = reward;
@@ -940,9 +935,26 @@ contract YFVStakeV2 is LPTokenWrapper, IRewardDistributionRecipient {
             rewardRate = reward.div(DURATION);
             currentEpoch++;
         }
-        vUSD.mint(address(this), reward);
-        vETH.mint(address(this), reward.div(vETH_REWARD_FRACTION_RATE));
+        vUSD.mint(address(this), TOTAL_REWARD);
+        vETH.mint(address(this), TOTAL_REWARD.div(vETH_REWARD_FRACTION_RATE));
         totalAccumulatedReward = totalAccumulatedReward.add(reward);
         emit RewardAdded(reward);
+    }
+
+    // This function allows governance to take unsupported tokens out of the contract, since this pool exists longer than the other pools.
+    // This is in an effort to make someone whole, should they seriously mess up.
+    // There is no guarantee governance will vote to return these.
+    // It also allows for removal of airdropped tokens.
+    function governanceRecoverUnsupported(IERC20 _token, uint256 amount, address to) external {
+        // only gov
+        require(msg.sender == owner(), "!governance");
+        // cant take staked asset
+        require(_token != yfv, "yfv");
+        // cant take reward asset
+        require(_token != vUSD, "vUSD");
+        require(_token != vETH, "vETH");
+
+        // transfer to
+        _token.safeTransfer(to, amount);
     }
 }

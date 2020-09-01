@@ -26,7 +26,10 @@ YFV is the governance token of YFValue protocol. The project aims to bring the t
  - Added lowStakeDepositFee, highStakeDepositFee, unlockWithdrawFee (and disable all at the beginning. Will set by governance after VIP-1.1)
  - Set yfvInsuranceFund to Governance Multisig Wallet (and move to deployed Insurance Fund contract later)
  - Owner (governance) can set epochReward to 0 to disable the pool with no harm
- - Check if the minter rights (vETH and vUSD) are revoked, and set epochReward to zero with no harm (in checkNextEpoch() modifier).
+ - Mint all the total reward for vUSD and vETH (to avoid mint more every new epoch)
+ - Use the same solidity version uniformly across the contract
+ - Optimise gas usage for getReward() method
+ - Add governanceRecoverUnsupported for recover any ERC20 sent in mess up
  
 **_Staking Deposit/Withdraw Fee system:_**
  - unlockWithdrawFee = 0.1%: stakers will need to pay 0.1% (sent to insurance fund)of amount they want to withdraw if the coin still frozen
